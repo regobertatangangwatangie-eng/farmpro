@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: farmpro-nginx
+  labels:
+    app: farmpro
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: farmpro
+  template:
+    metadata:
+      labels:
+        app: farmpro
+    spec:
+      containers:
+      - name: nginx
+        image: regobert2004/farmpro:latest
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10

@@ -1,0 +1,29 @@
+---
+# Ansible playbook to pull Docker image and run container on remote hosts
+- hosts: webservers
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Ensure pip is installed (for docker python lib)
+      ansible.builtin.package:
+        name: python3-pip
+        state: present
+
+    - name: Install docker python package
+      ansible.builtin.pip:
+        name: docker
+
+    - name: Pull farmpro image
+      community.docker.docker_image:
+        name: regobert2004/farmpro
+        tag: latest
+        source: pull
+
+    - name: Run farmpro container
+      community.docker.docker_container:
+        name: farmpro
+        image: regobert2004/farmpro:latest
+        state: started
+        restart_policy: unless-stopped
+        published_ports:
+          - 80:80

@@ -1,0 +1,24 @@
+plugins {
+    id 'com.android.application' version '8.1.0' apply false
+    id 'org.jetbrains.kotlin.android' version '1.8.21' apply false
+}
+
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    compileSdk 33
+    defaultConfig {
+        applicationId "com.farmpro"
+        minSdk 24
+        targetSdk 33
+        versionCode 1
+        versionName "0.1"
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.8.21"
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.0'
+}

@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "farmpro.fullname" . }}-frontend
+  labels:
+    app: {{ include "farmpro.name" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "farmpro.fullname" . }}-frontend
+  template:
+    metadata:
+      labels:
+        app: {{ include "farmpro.fullname" . }}-frontend
+    spec:
+      containers:
+        - name: nginx
+          image: "{{ .Values.image.frontend.repository }}:{{ .Values.image.frontend.tag }}"
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10

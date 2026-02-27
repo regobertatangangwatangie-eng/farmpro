@@ -1,0 +1,29 @@
+services:
+  backend:
+    build: ./backend
+    environment:
+      - PORT=3000
+      - PRICE_BASIC=5
+      - PRICE_INTERNATIONAL=10
+      - MTN_ACCOUNT=${MTN_ACCOUNT}
+      - ORANGE_ACCOUNT=${ORANGE_ACCOUNT}
+      - FLW_SECRET_KEY=${FLW_SECRET_KEY}
+      - FLW_WEBHOOK_SECRET=${FLW_WEBHOOK_SECRET}
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - SQLITE_FILE=/usr/src/app/data/farmpro.db
+    ports:
+      - '3000:3000'
+    volumes:
+      - farmpro-data:/usr/src/app/data
+
+  frontend:
+    build: ./frontend
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    ports:
+      - '3001:3001'
+    depends_on:
+      - backend
+
+volumes:
+  farmpro-data:

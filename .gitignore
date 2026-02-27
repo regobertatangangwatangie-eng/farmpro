@@ -1,0 +1,18 @@
+# ignore node modules
+/backend/node_modules
+/frontend/node_modules
+
+# environment files
+.env
+/frontend/.env
+/backend/.env
+
+# docker volumes
+/backend/data
+
+# logs
+*.log
+
+# IDE files
+.vscode/
+.idea/

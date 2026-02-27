@@ -1,0 +1,6 @@
+apiVersion: v2
+name: farmpro
+description: Helm chart to deploy FarmPro frontend (nginx) and backend (express)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

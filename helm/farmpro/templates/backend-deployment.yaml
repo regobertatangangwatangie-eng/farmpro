@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "farmpro.fullname" . }}-backend
+  labels:
+    app: {{ include "farmpro.name" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "farmpro.fullname" . }}-backend
+  template:
+    metadata:
+      labels:
+        app: {{ include "farmpro.fullname" . }}-backend
+    spec:
+      containers:
+        - name: backend
+          image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag }}"
+          ports:
+            - containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10

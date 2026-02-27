@@ -1,0 +1,21 @@
+replicaCount: 2
+
+image:
+  frontend:
+    repository: your-dockerhub-username/farmpro
+    tag: latest
+    pullPolicy: IfNotPresent
+  backend:
+    repository: regobert2004/farmpro-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  port: 80
+
+ingress:
+  enabled: false
+  host: farmpro.example.com
+
+resources: {}
