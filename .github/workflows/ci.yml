@@ -156,9 +156,32 @@ jobs:
 
       - name: Pull and test frontend image
         run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.DOCKERHUB_USERNAME }}/farmpro:latest
-          docker run --rm -d --name test-frontend -p 8080:80 \
-            ${{ env.REGISTRY }}/${{ env.DOCKERHUB_USERNAME }}/farmpro:latest
-          sleep 3
-          curl -f http://localhost:8080/ || (docker logs test-frontend && exit 1)
+          IMAGE=${{ env.REGISTRY }}/${{ env.DOCKERHUB_USERNAME }}/farmpro:latest
+          echo "Pulling $IMAGE"
+          docker pull $IMAGE
+
+          echo "Starting container"
+          docker run --rm -d --name test-frontend -p 8080:80 $IMAGE || (
+            echo "docker run failed"; docker ps -a || true; exit 1
+          )
+
+          echo "Waiting for frontend to respond on http://localhost:8080"
+          for i in 1 2 3 4 5; do
+            if curl -sSf http://localhost:8080/ -o /dev/null; then
+              echo "Frontend responded"
+              break
+            fi
+            echo "Retry $i/5..."
+            sleep 3
+          done
+
+          if ! curl -sSf http://localhost:8080/ >/dev/null; then
+            echo "Frontend did not respond; collecting diagnostics"
+            docker ps -a
+            docker logs test-frontend || true
+            docker rm -f test-frontend || true
+            exit 1
+          fi
+
+          echo "Frontend healthy; removing container"
           docker rm -f test-frontend
