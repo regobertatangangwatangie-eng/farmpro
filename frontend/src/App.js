@@ -23,12 +23,15 @@ function App() {
   const [sellerListingUnit, setSellerListingUnit] = useState('kg');
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState(null);
+  const [promo, setPromo] = useState(null);
+  const [showPromo, setShowPromo] = useState(false);
 
   // ========== Effects ==========
   useEffect(() => {
     fetchCategories();
     fetchProducts();
     fetchMarketplaceStats();
+    fetchPromotion();
     // Try to load user from localStorage
     const saved = localStorage.getItem('farmpro_user');
     if (saved) setCurrentUser(JSON.parse(saved));
@@ -99,6 +102,19 @@ function App() {
       setStats(data.stats);
     } catch (e) {
       console.error('Error fetching stats:', e);
+    }
+  };
+
+  const fetchPromotion = async () => {
+    try {
+      const res = await fetch('/api/promotions/ticket');
+      const data = await res.json();
+      if (data && data.show) {
+        setPromo(data);
+        setShowPromo(true);
+      }
+    } catch (e) {
+      console.error('Error fetching promo:', e);
     }
   };
 
@@ -192,6 +208,19 @@ function App() {
   };
 
   // ========== Render Functions ==========
+
+  const renderPromoModal = () => {
+    if (!promo || !showPromo) return null;
+    return (
+      <div style={{ position: 'fixed', top:0, left:0, width:'100%', height:'100%', background:'rgba(0,0,0,0.5)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }} onClick={()=>setShowPromo(false)}>
+        <div style={{ background:'white', padding:24, borderRadius:8, maxWidth:400 }} onClick={e=>e.stopPropagation()}>
+          <h2>{promo.title}</h2>
+          <p style={{ whiteSpace:'pre-wrap' }}>{promo.message}</p>
+          <button onClick={()=>{window.location.href=promo.link; setShowPromo(false);}} style={{ marginTop:16, padding:'8px 16px', backgroundColor:'#4CAF50', color:'white', border:'none', borderRadius:4 }}>Learn More</button>
+        </div>
+      </div>
+    );
+  };
   const renderBrowse = () => (
     <div>
       <h2>📦 Farm Products & Items Marketplace</h2>
@@ -396,6 +425,7 @@ function App() {
         {currentPage === 'seller' && currentUser && renderSeller()}
         {currentPage === 'orders' && currentUser && renderOrders()}
       </main>
+      {renderPromoModal()}
     </div>
   );
 }

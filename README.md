@@ -119,6 +119,13 @@ npm start
 
 The React UI provides a complete marketplace experience:
 
+### Promotional Pop‑up
+On every platform load a popup ticket or banner appears, advertising:
+
+> Buy directly from local farmers and sell to international buyers. FarmPro links local farmers to global markets — #SupportLocal #FarmToWorld
+
+This message is served by the `/api/promotions/ticket` endpoint and can be updated to push new announcements across social media.
+
 ### For Buyers:
 - **Browse Products**: Search and filter farm products and items
 - **Shopping Cart**: Add items and checkout  

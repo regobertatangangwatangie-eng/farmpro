@@ -10,6 +10,17 @@ const port = process.env.PORT || 3000;
 
 app.use(express.json());
 
+// promotional ticket endpoint (popup message for all platforms)
+app.get('/api/promotions/ticket', (req, res) => {
+  res.json({
+    title: '🌍 Connect with the World via FarmPro',
+    message: `Buy directly from local farmers and sell to international buyers.\n` +
+             `FarmPro links local farmers to global markets — #SupportLocal #FarmToWorld`,
+    link: '/',
+    show: true
+  });
+});
+
 // ===================== Marketplace Helpers =====================
 
 function createUser(user) {
