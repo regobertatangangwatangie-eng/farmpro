@@ -37,6 +37,23 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Install Node.js (for tests)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Run backend lint
+        working-directory: ./backend
+        run: |
+          npm ci
+          npm run lint
+
+      - name: Run backend tests
+        working-directory: ./backend
+        run: |
+          npm ci
+          npm test
+
       - name: Extract metadata
         id: meta-backend
         uses: docker/metadata-action@v5

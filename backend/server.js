@@ -662,8 +662,12 @@ if (process.argv.includes('--test')) {
   process.exit(0);
 }
 
-app.listen(port, () => {
-  console.log(`FarmPro Marketplace Backend listening on port ${port}`);
-});
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`FarmPro Marketplace Backend listening on port ${port}`);
+  });
+}
+
+module.exports = app;
 
 
