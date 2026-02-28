@@ -7,9 +7,10 @@ ENV NODE_ENV=production
 # ---------- App Directory ----------
 WORKDIR /usr/src/app
 
-# ---------- Install Dependencies First (Better Caching) ----------
+# ---------- Install Dependencies (Deterministic) ----------
 COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev \
+    && npm cache clean --force
 
 # ---------- Copy Application Source ----------
 COPY server.js db.js ./
@@ -17,14 +18,13 @@ COPY server.js db.js ./
 # ---------- Create Required Directories ----------
 RUN mkdir -p data
 
-# ---------- Install curl for healthcheck ----------
+# ---------- Install curl (for healthcheck) ----------
 RUN apt-get update \
-    && apt-get install -y curl \
-    && apt-get clean \
+    && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------- Security: Run as Non-Root ----------
-RUN useradd --user-group --create-home --shell /bin/false appuser \
+RUN useradd --system --create-home --shell /usr/sbin/nologin appuser \
     && chown -R appuser:appuser /usr/src/app
 
 USER appuser
