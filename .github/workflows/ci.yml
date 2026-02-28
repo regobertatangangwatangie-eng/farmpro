@@ -74,7 +74,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
+          # caching disabled because no lockfile is present
+        working-directory: ./frontend
 
       - name: Show workspace structure (debug)
         run: |
