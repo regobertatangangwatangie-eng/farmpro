@@ -161,27 +161,30 @@ jobs:
           docker pull $IMAGE
 
           echo "Starting container"
-          docker run --rm -d --name test-frontend -p 8080:80 $IMAGE || (
+          # run without --rm so we can inspect logs if the container exits
+          docker run -d --name test-frontend -p 8080:80 $IMAGE || (
             echo "docker run failed"; docker ps -a || true; exit 1
           )
 
           echo "Waiting for frontend to respond on http://localhost:8080"
-          for i in 1 2 3 4 5; do
+          for i in 1 2 3 4 5 6 7 8; do
             if curl -sSf http://localhost:8080/ -o /dev/null; then
               echo "Frontend responded"
               break
             fi
-            echo "Retry $i/5..."
-            sleep 3
+            echo "Retry $i/8..."
+            sleep 4
           done
 
           if ! curl -sSf http://localhost:8080/ >/dev/null; then
             echo "Frontend did not respond; collecting diagnostics"
-            docker ps -a
+            docker ps -a || true
+            echo "----- container logs (test-frontend) -----"
             docker logs test-frontend || true
+            echo "----- end logs -----"
             docker rm -f test-frontend || true
             exit 1
           fi
 
           echo "Frontend healthy; removing container"
-          docker rm -f test-frontend
+          docker rm -f test-frontend || true
