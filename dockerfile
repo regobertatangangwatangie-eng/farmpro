@@ -21,8 +21,8 @@ WORKDIR /usr/share/nginx/html
 
 # Install a tiny tool to allow healthchecks and prepare log/cache directories
 RUN apk add --no-cache curl \
- && mkdir -p /var/log/nginx /var/cache/nginx/client_temp \
- && chown -R 101:101 /var/log/nginx /var/cache/nginx
+ && mkdir -p /var/log/nginx /var/cache/nginx/client_temp /var/run/nginx \
+ && chown -R 101:101 /var/log/nginx /var/cache/nginx /var/run/nginx
 
 # Copy local nginx configuration
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
