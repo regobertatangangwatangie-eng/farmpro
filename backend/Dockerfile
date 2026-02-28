@@ -9,8 +9,7 @@ WORKDIR /usr/src/app
 
 # ---------- Install Dependencies (Deterministic) ----------
 COPY package*.json ./
-RUN npm ci --omit=dev \
-    && npm cache clean --force
+RUN RUN npm install --omit=dev && npm cache clean --force
 
 # ---------- Copy Application Source ----------
 COPY server.js db.js ./
