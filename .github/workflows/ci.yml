@@ -45,13 +45,13 @@ jobs:
       - name: Run backend lint
         working-directory: ./backend
         run: |
-          npm ci
+          npm ci || npm install
           npm run lint
 
       - name: Run backend tests
         working-directory: ./backend
         run: |
-          npm ci
+          npm ci || npm install
           npm test
 
       - name: Extract metadata
