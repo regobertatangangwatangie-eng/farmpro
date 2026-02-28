@@ -10,590 +10,641 @@ const port = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Pricing (USD)
-const PRICE_BASIC = parseFloat(process.env.PRICE_BASIC || '5');
-const PRICE_INTERNATIONAL = parseFloat(process.env.PRICE_INTERNATIONAL || '10');
+// ===================== Marketplace Helpers =====================
 
-// Mobile money account numbers (configure via env)
-const MTN_ACCOUNT = process.env.MTN_ACCOUNT || '';
-const ORANGE_ACCOUNT = process.env.ORANGE_ACCOUNT || '';
-
-const SUBSCRIPTION_PLANS = {
-  basic: { id: 'basic', name: 'Basic', price_usd: PRICE_BASIC, interval: 'month', description: '$5/month (local)' },
-  international: { id: 'international', name: 'International', price_usd: PRICE_INTERNATIONAL, interval: 'month', description: '$10/month (international)' }
-};
-
-const FLW_SECRET_KEY = process.env.FLW_SECRET_KEY || '';
-const FLW_WEBHOOK_SECRET = process.env.FLW_WEBHOOK_SECRET || '';
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin-token-sample';
-
-function createSubscriptionRow(sub) {
-  const stmt = db.prepare(`INSERT INTO subscriptions (id, plan_id, plan_name, amount_usd, customer_name, status, payment_method, payment_provider, payment_instructions, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`);
-  stmt.run(sub.id, sub.plan.id, sub.plan.name, sub.amount_usd, sub.customer.name, sub.status, sub.payment.method, sub.payment.provider || null, JSON.stringify(sub.payment.instructions || {}), sub.created_at);
-}
-
-function updateSubscriptionStatus(id, status) {
-  const activated_at = status === 'active' ? new Date().toISOString() : null;
-  const stmt = db.prepare(`UPDATE subscriptions SET status = ?, activated_at = ? WHERE id = ?`);
-  stmt.run(status, activated_at, id);
-}
-
-function getSubscription(id) {
-  const row = db.prepare(`SELECT * FROM subscriptions WHERE id = ?`).get(id);
-  if (!row) return null;
-  row.payment_instructions = row.payment_instructions ? JSON.parse(row.payment_instructions) : null;
-  return row;
-}
-
-function listSubscriptions() {
-  return db.prepare(`SELECT * FROM subscriptions ORDER BY created_at DESC`).all().map(r => {
-    r.payment_instructions = r.payment_instructions ? JSON.parse(r.payment_instructions) : null;
-    return r;
-  });
-}
-
-function addPaymentEvent(subscription_id, event_type, payload) {
-  db.prepare(`INSERT INTO payment_events (subscription_id, event_type, payload, created_at) VALUES (?,?,?,?)`).run(subscription_id, event_type, JSON.stringify(payload || {}), new Date().toISOString());
-}
-
-// Ads persistence helpers
-function createAdRow(ad) {
-  db.prepare(`INSERT INTO ads (id, name, platform, objective, budget, status, provider_id, payload, created_at) VALUES (?,?,?,?,?,?,?,?,?)`).run(
-    ad.id, ad.name, ad.platform, ad.objective, ad.budget, ad.status || 'draft', ad.provider_id || null, JSON.stringify(ad.payload || {}), ad.created_at
+function createUser(user) {
+  db.prepare(`INSERT INTO users (id, name, email, phone, role, location, country, bio, avatar_url, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+    user.id, user.name, user.email, user.phone || null, user.role, user.location || null, user.country || null, user.bio || null, user.avatar_url || null, user.created_at, user.updated_at
   );
 }
 
-function listAds() {
-  return db.prepare(`SELECT * FROM ads ORDER BY created_at DESC`).all().map(r => {
-    r.payload = r.payload ? JSON.parse(r.payload) : null;
-    return r;
-  });
+function getUser(id) {
+  return db.prepare(`SELECT * FROM users WHERE id = ?`).get(id);
 }
 
-// Retry helper with exponential backoff
-async function retryAsync(fn, maxRetries = 3, delayMs = 1000) {
-  for (let i = 0; i < maxRetries; i++) {
+function getUserByEmail(email) {
+  return db.prepare(`SELECT * FROM users WHERE email = ?`).get(email);
+}
+
+function listUsers() {
+  return db.prepare(`SELECT id, name, email, role, location, country, verified, created_at FROM users ORDER BY created_at DESC`).all();
+}
+
+function listSellers() {
+  return db.prepare(`SELECT id, name, email, role, location, country, bio, avatar_url, verified, created_at FROM users WHERE role LIKE '%seller%' OR role LIKE '%farmer%' ORDER BY created_at DESC`).all();
+}
+
+function createProduct(product) {
+  db.prepare(`INSERT INTO products (id, name, description, category_id, type, unit, image_url, created_at) VALUES (?,?,?,?,?,?,?,?)`).run(
+    product.id, product.name, product.description || null, product.category_id, product.type, product.unit || null, product.image_url || null, product.created_at
+  );
+}
+
+function getProduct(id) {
+  return db.prepare(`SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?`).get(id);
+}
+
+function listProducts(category_id = null, type = null) {
+  let query = `SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE 1`;
+  const params = [];
+  if (category_id) {
+    query += ` AND p.category_id = ?`;
+    params.push(category_id);
+  }
+  if (type) {
+    query += ` AND p.type = ?`;
+    params.push(type);
+  }
+  query += ` ORDER BY p.created_at DESC`;
+  return db.prepare(query).all(...params);
+}
+
+function createCategory(category) {
+  db.prepare(`INSERT INTO categories (id, name, description, type, icon_url, created_at) VALUES (?,?,?,?,?,?)`).run(
+    category.id, category.name, category.description || null, category.type, category.icon_url || null, category.created_at
+  );
+}
+
+function getCategory(id) {
+  return db.prepare(`SELECT * FROM categories WHERE id = ?`).get(id);
+}
+
+function listCategories(type = null) {
+  let query = `SELECT * FROM categories WHERE 1`;
+  const params = [];
+  if (type) {
+    query += ` AND type = ?`;
+    params.push(type);
+  }
+  query += ` ORDER BY name ASC`;
+  return db.prepare(query).all(...params);
+}
+
+function createListing(listing) {
+  db.prepare(`INSERT INTO listings (id, product_id, seller_id, title, description, price, quantity, quantity_unit, status, image_url, certification, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    listing.id, listing.product_id, listing.seller_id, listing.title, listing.description || null, listing.price, listing.quantity, listing.quantity_unit, listing.status || 'active', listing.image_url || null, listing.certification || null, listing.created_at, listing.updated_at
+  );
+}
+
+function getListing(id) {
+  const listing = db.prepare(`SELECT l.*, p.name as product_name, c.name as category_name, u.name as seller_name FROM listings l LEFT JOIN products p ON l.product_id = p.id LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN users u ON l.seller_id = u.id WHERE l.id = ?`).get(id);
+  return listing;
+}
+
+function listListings(filters = {}) {
+  let query = `SELECT l.*, p.name as product_name, c.name as category_name, u.name as seller_name FROM listings l LEFT JOIN products p ON l.product_id = p.id LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN users u ON l.seller_id = u.id WHERE l.status = 'active'`;
+  const params = [];
+  
+  if (filters.category_id) {
+    query += ` AND c.id = ?`;
+    params.push(filters.category_id);
+  }
+  if (filters.seller_id) {
+    query += ` AND l.seller_id = ?`;
+    params.push(filters.seller_id);
+  }
+  if (filters.type) {
+    query += ` AND p.type = ?`;
+    params.push(filters.type);
+  }
+  if (filters.search) {
+    query += ` AND (p.name LIKE ? OR l.title LIKE ? OR l.description LIKE ?)`;
+    params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
+  }
+  
+  query += ` ORDER BY l.created_at DESC LIMIT 100`;
+  return db.prepare(query).all(...params);
+}
+
+function updateListing(id, updates) {
+  const setClauses = [];
+  const params = [];
+  for (const [key, value] of Object.entries(updates)) {
+    if (key !== 'id') {
+      setClauses.push(`${key} = ?`);
+      params.push(value);
+    }
+  }
+  params.push(id);
+  const query = `UPDATE listings SET ${setClauses.join(', ')}, updated_at = ? WHERE id = ?`;
+  db.prepare(query).run(...params, new Date().toISOString());
+}
+
+function createOrder(order) {
+  db.prepare(`INSERT INTO orders (id, buyer_id, listing_id, quantity, unit_price, total_amount, status, payment_status, delivery_address, delivery_date, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    order.id, order.buyer_id, order.listing_id, order.quantity, order.unit_price, order.total_amount, order.status || 'pending', order.payment_status || 'pending', order.delivery_address || null, order.delivery_date || null, order.notes || null, order.created_at, order.updated_at
+  );
+}
+
+function getOrder(id) {
+  const order = db.prepare(`SELECT o.*, p.name as product_name, u.name as seller_name, b.name as buyer_name FROM orders o LEFT JOIN listings l ON o.listing_id = l.id LEFT JOIN products p ON l.product_id = p.id LEFT JOIN users u ON l.seller_id = u.id LEFT JOIN users b ON o.buyer_id = b.id WHERE o.id = ?`).get(id);
+  return order;
+}
+
+function listOrders(buyer_id = null, seller_id = null) {
+  let query = `SELECT o.*, p.name as product_name, u.name as seller_name, b.name as buyer_name FROM orders o LEFT JOIN listings l ON o.listing_id = l.id LEFT JOIN products p ON l.product_id = p.id LEFT JOIN users u ON l.seller_id = u.id LEFT JOIN users b ON o.buyer_id = b.id WHERE 1`;
+  const params = [];
+  
+  if (buyer_id) {
+    query += ` AND o.buyer_id = ?`;
+    params.push(buyer_id);
+  }
+  if (seller_id) {
+    query += ` AND u.id = ?`;
+    params.push(seller_id);
+  }
+  
+  query += ` ORDER BY o.created_at DESC`;
+  return db.prepare(query).all(...params);
+}
+
+function updateOrder(id, updates) {
+  const setClauses = [];
+  const params = [];
+  for (const [key, value] of Object.entries(updates)) {
+    if (key !== 'id') {
+      setClauses.push(`${key} = ?`);
+      params.push(value);
+    }
+  }
+  params.push(id);
+  const query = `UPDATE orders SET ${setClauses.join(', ')}, updated_at = ? WHERE id = ?`;
+  db.prepare(query).run(...params, new Date().toISOString());
+}
+
+
+// ===================== Default Seed Data =====================
+function initializeDefaultCategories() {
+  const existingCats = listCategories();
+  if (existingCats.length > 0) return;
+
+  const farmProductsCategories = [
+    { id: uuidv4(), name: 'Coffee', type: 'farm_product', description: 'Coffee beans and processed coffee' },
+    { id: uuidv4(), name: 'Cocoa', type: 'farm_product', description: 'Cocoa beans and related products' },
+    { id: uuidv4(), name: 'Yams', type: 'farm_product', description: 'Fresh yam roots' },
+    { id: uuidv4(), name: 'Plantain', type: 'farm_product', description: 'Fresh and processed plantains' },
+    { id: uuidv4(), name: 'Corn', type: 'farm_product', description: 'Corn/maize and corn products' },
+    { id: uuidv4(), name: 'Rice', type: 'farm_product', description: 'Rice grains and processed rice' },
+    { id: uuidv4(), name: 'Vegetables', type: 'farm_product', description: 'Fresh vegetables' },
+    { id: uuidv4(), name: 'Fruits', type: 'farm_product', description: 'Fresh fruits' }
+  ];
+
+  const farmItemsCategories = [
+    { id: uuidv4(), name: 'Fertilizer', type: 'farm_item', description: 'Various types of fertilizers' },
+    { id: uuidv4(), name: 'Tools', type: 'farm_item', description: 'Farm tools and equipment' },
+    { id: uuidv4(), name: 'Seeds', type: 'farm_item', description: 'Farm seeds for planting' },
+    { id: uuidv4(), name: 'Pesticides', type: 'farm_item', description: 'Pest control products' },
+    { id: uuidv4(), name: 'Irrigation', type: 'farm_item', description: 'Irrigation equipment and supplies' }
+  ];
+
+  const allCategories = { ...farmProductsCategories, ...farmItemsCategories };
+  for (const cat of Object.values(allCategories)) {
     try {
-      return await fn();
-    } catch (err) {
-      if (i === maxRetries - 1) throw err;
-      await new Promise(resolve => setTimeout(resolve, delayMs * Math.pow(2, i)));
+      createCategory({ ...cat, created_at: new Date().toISOString() });
+    } catch (e) {
+      // Category might already exist
     }
   }
 }
 
-// Ad event tracking
-function logAdEvent(ad_id, event_type, data) {
-  db.prepare(`INSERT INTO ad_events (ad_id, event_type, data, created_at) VALUES (?,?,?,?)`)
-    .run(ad_id, event_type, JSON.stringify(data || {}), new Date().toISOString());
-}
+function initializeDefaultProducts() {
+  const existingProducts = listProducts();
+  if (existingProducts.length > 0) return;
 
-// Meta helpers (campaign → adset → creative → live)
-const META_TOKEN = process.env.META_ACCESS_TOKEN || '';
-const META_ACCOUNT = process.env.META_AD_ACCOUNT_ID || '';
-const META_API = 'https://graph.facebook.com/v17.0';
+  const categories = listCategories();
+  const catMap = {};
+  for (const cat of categories) {
+    catMap[cat.name] = cat.id;
+  }
 
-async function createMetaCampaign(name, objective) {
-  const resp = await axios.post(`${META_API}/act_${META_ACCOUNT}/campaigns`, null, {
-    params: { name, objective, status: 'PAUSED', access_token: META_TOKEN }
-  });
-  return resp.data?.id;
-}
+  const products = [
+    // Farm products
+    { name: 'Arabica Coffee Beans', category: 'Coffee', type: 'farm_product', unit: 'kg', description: 'Premium arabica coffee beans' },
+    { name: 'Robusta Coffee', category: 'Coffee', type: 'farm_product', unit: 'kg', description: 'Robusta coffee beans' },
+    { name: 'Cocoa Beans (Fermented)', category: 'Cocoa', type: 'farm_product', unit: 'kg', description: 'High-quality fermented cocoa beans' },
+    { name: 'Cocoa Powder', category: 'Cocoa', type: 'farm_product', unit: 'kg', description: 'Processed cocoa powder' },
+    { name: 'Fresh Yams', category: 'Yams', type: 'farm_product', unit: 'kg', description: 'Fresh harvested yams' },
+    { name: 'Plantain Bunches', category: 'Plantain', type: 'farm_product', unit: 'bunch', description: 'Fresh plantain bunches' },
+    { name: 'Corn/Maize', category: 'Corn', type: 'farm_product', unit: 'kg', description: 'Fresh corn/maize' },
+    { name: 'Corn Flour', category: 'Corn', type: 'farm_product', unit: 'kg', description: 'Ground corn flour' },
+    { name: 'Rice (Paddy)', category: 'Rice', type: 'farm_product', unit: 'kg', description: 'Paddy rice' },
+    { name: 'Rice (Milled)', category: 'Rice', type: 'farm_product', unit: 'kg', description: 'Milled white rice' },
+    { name: 'Tomatoes', category: 'Vegetables', type: 'farm_product', unit: 'kg', description: 'Fresh tomatoes' },
+    { name: 'Onions', category: 'Vegetables', type: 'farm_product', unit: 'kg', description: 'Fresh onions' },
+    { name: 'Bananas', category: 'Fruits', type: 'farm_product', unit: 'bunch', description: 'Fresh bananas' },
+    { name: 'Avocados', category: 'Fruits', type: 'farm_product', unit: 'kg', description: 'Fresh avocados' },
+    
+    // Farm items
+    { name: 'NPK Fertilizer', category: 'Fertilizer', type: 'farm_item', unit: 'kg', description: 'NPK compound fertilizer' },
+    { name: 'Organic Manure', category: 'Fertilizer', type: 'farm_item', unit: 'kg', description: 'Organic manure/compost' },
+    { name: 'Hoe', category: 'Tools', type: 'farm_item', unit: 'piece', description: 'Farm hoe tool' },
+    { name: 'Spade', category: 'Tools', type: 'farm_item', unit: 'piece', description: 'Garden spade' },
+    { name: 'Machete', category: 'Tools', type: 'farm_item', unit: 'piece', description: 'Farming machete' },
+    { name: 'Watering Can', category: 'Tools', type: 'farm_item', unit: 'piece', description: 'Metal watering can' },
+    { name: 'Corn Seeds', category: 'Seeds', type: 'farm_item', unit: 'kg', description: 'Hybrid corn seeds' },
+    { name: 'Rice Seeds', category: 'Seeds', type: 'farm_item', unit: 'kg', description: 'Quality rice seeds' },
+    { name: 'Insecticide Spray', category: 'Pesticides', type: 'farm_item', unit: 'liter', description: 'Organic insecticide' },
+    { name: 'Drip Tube', category: 'Irrigation', type: 'farm_item', unit: 'meter', description: 'Irrigation drip tube' },
+    { name: 'Water Pump', category: 'Irrigation', type: 'farm_item', unit: 'piece', description: 'Electric water pump' }
+  ];
 
-async function createMetaAdset(campaign_id, name, daily_budget, targeting) {
-  const resp = await axios.post(`${META_API}/${campaign_id}/adsets`, null, {
-    params: {
-      name,
-      campaign_id,
-      daily_budget,
-      targeting: JSON.stringify(targeting || { geo_locations: [{ country: 'CM' }] }),
-      status: 'PAUSED',
-      access_token: META_TOKEN
+  for (const prod of products) {
+    const catId = catMap[prod.category];
+    if (catId) {
+      try {
+        createProduct({
+          id: uuidv4(),
+          name: prod.name,
+          description: prod.description,
+          category_id: catId,
+          type: prod.type,
+          unit: prod.unit,
+          created_at: new Date().toISOString()
+        });
+      } catch (e) {
+        // Product might already exist
+      }
     }
-  });
-  return resp.data?.id;
+  }
 }
 
-async function createMetaCreative(account_id, title, body, image_url) {
-  const resp = await axios.post(`${META_API}/act_${account_id}/adcreatives`, null, {
-    params: {
-      name: title,
-      object_story_spec: JSON.stringify({
-        page_id: process.env.META_PAGE_ID || '',
-        link_data: { message: body, link: process.env.FARMPRO_URL || 'https://farmpro.local', image_hash: image_url }
-      }),
-      access_token: META_TOKEN
-    }
-  });
-  return resp.data?.id;
+// Initialize on startup
+try {
+  initializeDefaultCategories();
+  initializeDefaultProducts();
+} catch (e) {
+  console.log('Seed data initialization skipped or already done');
 }
 
-async function createMetaAd(adset_id, creative_id) {
-  const resp = await axios.post(`${META_API}/act_${META_ACCOUNT}/ads`, null, {
-    params: { adset_id, creative: { creative_id }, status: 'PAUSED', access_token: META_TOKEN }
-  });
-  return resp.data?.id;
-}
-
-// Google Ads helpers (simplified)
-async function createGoogleAdsCampaign(customerId, name, budget) {
-  // Google Ads requires complex setup; stub here
-  return `gads_${uuidv4()}`;
-}
-
-// Paystack payment helper
-const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || '';
-async function initializePaystackPayment(amount, email, reference) {
-  const resp = await axios.post('https://api.paystack.co/transaction/initialize', {
-    amount: amount * 100,
-    email,
-    reference
-  }, {
-    headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` }
-  });
-  return resp.data?.data;
-}
-
-// LinkedIn Ads stub
-async function createLinkedInCampaign(name, budget) {
-  return `linkedin_${uuidv4()}`;
-}
-
-// Twitter/X Ads stub
-async function createTwitterAd(name, budget) {
-  return `twitter_${uuidv4()}`;
-}
+// ===================== Health & Info Endpoints =====================
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', uptime: process.uptime() });
+  res.json({ status: 'ok', uptime: process.uptime(), service: 'farmpro-marketplace' });
 });
 
 app.get('/api/info', (req, res) => {
   res.json({
-    service: 'farmpro-backend',
+    service: 'farmpro-marketplace-backend',
     hostname: os.hostname(),
-    region: process.env.AWS_REGION || 'local'
+    region: process.env.AWS_REGION || 'local',
+    version: '2.0 - Marketplace'
   });
 });
 
-app.get('/api/farms', (req, res) => {
-  // Demo static response
-  res.json([
-    { id: 1, name: 'Sunrise Farm', location: 'Douala' },
-    { id: 2, name: 'Green Valley', location: 'Yaounde' }
-  ]);
-});
+// ===================== User Endpoints =====================
 
-// Subscription plans
-app.get('/api/subscriptions/plans', (req, res) => {
-  res.json(Object.values(SUBSCRIPTION_PLANS));
-});
+app.post('/api/users/register', (req, res) => {
+  const { name, email, phone, role, location, country, bio } = req.body || {};
+  if (!name || !email || !role) return res.status(400).json({ error: 'missing_fields' });
 
-// Create subscription - integrates with Flutterwave for card/hosted payments
-app.post('/api/subscriptions/create', async (req, res) => {
-  const { plan, customer, payment } = req.body || {};
-  if (!plan || !SUBSCRIPTION_PLANS[plan]) return res.status(400).json({ error: 'invalid_plan' });
-  if (!customer || !customer.name) return res.status(400).json({ error: 'missing_customer' });
-  if (!payment || !payment.method) return res.status(400).json({ error: 'missing_payment_method' });
+  const existing = getUserByEmail(email);
+  if (existing) return res.status(400).json({ error: 'email_already_registered' });
 
   const id = uuidv4();
-  const selectedPlan = SUBSCRIPTION_PLANS[plan];
-  const amount = selectedPlan.price_usd;
-
-  const subscription = {
-    id,
-    plan: selectedPlan,
-    customer,
-    status: 'pending',
-    amount_usd: amount,
+  const user = {
+    id, name, email, phone: phone || null, role, location: location || null, country: country || null, bio: bio || null,
     created_at: new Date().toISOString(),
-    payment: { method: payment.method, provider: payment.provider || null }
+    updated_at: new Date().toISOString()
   };
 
-  // Mobile money flow (manual): return account number + reference
-  if (payment.method === 'mobile_money') {
-    const provider = (payment.provider || '').toLowerCase();
-    let account = null;
-    if (provider === 'mtn') account = MTN_ACCOUNT;
-    else if (provider === 'orange') account = ORANGE_ACCOUNT;
-    else return res.status(400).json({ error: 'unsupported_mobile_money_provider' });
-
-    subscription.payment.instructions = {
-      type: 'mobile_money',
-      provider,
-      account,
-      currency: 'USD',
-      amount_usd: amount,
-      reference: `farmpro_${id}`
-    };
-
-    createSubscriptionRow(subscription);
-    addPaymentEvent(id, 'created', { via: 'mobile_money', instructions: subscription.payment.instructions });
-    return res.json({ subscription });
+  try {
+    createUser(user);
+    return res.json({ user: { ...user, avatar_url: null, verified: false } });
+  } catch (e) {
+    return res.status(500).json({ error: 'registration_failed', details: e.message });
   }
-
-  // Card / hosted payment - create a Flutterwave payment link (requires FLW_SECRET_KEY)
-  if (payment.method === 'card' || payment.method === 'flutterwave') {
-    if (!FLW_SECRET_KEY) return res.status(500).json({ error: 'flutterwave_not_configured' });
-
-    // tx_ref used to match webhook: use farmpro_<id>
-    const tx_ref = `farmpro_${id}`;
-
-    const payload = {
-      tx_ref,
-      amount: amount,
-      currency: 'USD',
-      redirect_url: `${req.protocol}://${req.get('host')}/api/subscriptions/checkout-flw/${id}`,
-      customer: {
-        name: customer.name
-      },
-      payment_options: 'card'
-    };
-
-    try {
-      const resp = await axios.post('https://api.flutterwave.com/v3/payments', payload, {
-        headers: { Authorization: `Bearer ${FLW_SECRET_KEY}` }
-      });
-
-      const link = resp.data && resp.data.data && resp.data.data.link ? resp.data.data.link : null;
-      subscription.payment.instructions = { type: 'flutterwave', provider: 'flutterwave', checkout_link: link, tx_ref };
-
-      createSubscriptionRow(subscription);
-      addPaymentEvent(id, 'created', { via: 'flutterwave', tx_ref, link });
-
-      return res.json({ subscription });
-    } catch (err) {
-      console.error('flutterwave create error', err?.response?.data || err.message);
-      return res.status(500).json({ error: 'flutterwave_create_failed', details: err?.response?.data || err.message });
-    }
-  }
-
-  // Paystack payment
-  if (payment.method === 'paystack') {
-    if (!PAYSTACK_SECRET) return res.status(500).json({ error: 'paystack_not_configured' });
-
-    const reference = `farmpro_${id}`;
-    try {
-      const psResp = await initializePaystackPayment(amount, customer.email || 'noemail@farmpro.local', reference);
-      const checkout_url = psResp?.authorization_url;
-      subscription.payment.instructions = { type: 'paystack', provider: 'paystack', checkout_url, reference };
-
-      createSubscriptionRow(subscription);
-      addPaymentEvent(id, 'created', { via: 'paystack', reference, checkout_url });
-      return res.json({ subscription });
-    } catch (err) {
-      console.error('paystack create error', err?.response?.data || err.message);
-      return res.status(500).json({ error: 'paystack_create_failed', details: err?.response?.data || err.message });
-    }
-  }
-
-  return res.status(400).json({ error: 'unsupported_payment_method' });
 });
 
-// Optional redirect endpoint for Flutterwave redirects (simple JSON response here)
-app.get('/api/subscriptions/checkout-flw/:id', (req, res) => {
-  const id = req.params.id;
-  const s = getSubscription(id);
-  if (!s) return res.status(404).json({ error: 'not_found' });
-  // In a real app you'd redirect to a UI success page; return JSON for demo
-  return res.json({ message: 'Flutterwave redirect received. Check subscription status via verify endpoint.', subscription: s });
+app.get('/api/users/:id', (req, res) => {
+  const user = getUser(req.params.id);
+  if (!user) return res.status(404).json({ error: 'not_found' });
+  res.json({ user });
 });
 
-// Webhook to receive provider notifications (secure via secret header)
-app.post('/api/subscriptions/webhook', (req, res) => {
-  const signature = req.headers['verif-hash'] || req.headers['x-flw-signature'];
-  // Flutterwave sends 'verif-hash' header with the webhook secret
-  if (!FLW_WEBHOOK_SECRET) return res.status(400).json({ error: 'webhook_not_configured' });
-  if (!signature || signature !== FLW_WEBHOOK_SECRET) {
-    return res.status(401).json({ error: 'invalid_signature' });
+app.get('/api/users', (req, res) => {
+  const users = listUsers();
+  res.json({ users, count: users.length });
+});
+
+app.get('/api/users/role/seller', (req, res) => {
+  const sellers = listSellers();
+  res.json({ sellers, count: sellers.length });
+});
+
+app.put('/api/users/:id', (req, res) => {
+  const { name, phone, location, country, bio, avatar_url } = req.body || {};
+  const user = getUser(req.params.id);
+  if (!user) return res.status(404).json({ error: 'not_found' });
+
+  const updates = {};
+  if (name !== undefined) updates.name = name;
+  if (phone !== undefined) updates.phone = phone;
+  if (location !== undefined) updates.location = location;
+  if (country !== undefined) updates.country = country;
+  if (bio !== undefined) updates.bio = bio;
+  if (avatar_url !== undefined) updates.avatar_url = avatar_url;
+  updates.updated_at = new Date().toISOString();
+
+  try {
+    db.prepare(`UPDATE users SET ${Object.keys(updates).map(k => `${k} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(updates), req.params.id);
+    const updated = getUser(req.params.id);
+    res.json({ user: updated });
+  } catch (e) {
+    res.status(500).json({ error: 'update_failed', details: e.message });
   }
-
-  const payload = req.body || {};
-  addPaymentEvent(null, 'webhook_received', payload);
-
-  // Attempt to extract tx_ref and map to subscription id
-  const tx_ref = payload?.data?.tx_ref || payload?.data?.flw_ref || null;
-  if (tx_ref && tx_ref.startsWith('farmpro_')) {
-    const id = tx_ref.replace('farmpro_', '');
-    // mark active if successful
-    const status = payload?.data?.status || payload?.data?.transaction_status || '';
-    if (status === 'successful' || status === 'successful' || status === 'paid') {
-      updateSubscriptionStatus(id, 'active');
-      addPaymentEvent(id, 'paid', payload);
-      return res.json({ ok: true });
-    } else {
-      updateSubscriptionStatus(id, 'failed');
-      addPaymentEvent(id, 'failed', payload);
-      return res.json({ ok: true });
-    }
-  }
-
-  return res.json({ ok: true });
 });
 
-// Admin: list subscriptions (requires simple token header)
-app.get('/api/admin/subscriptions', (req, res) => {
-  const token = req.headers['x-admin-token'];
-  if (!token || token !== ADMIN_TOKEN) return res.status(401).json({ error: 'unauthorized' });
-  const rows = listSubscriptions();
-  res.json(rows);
+// ===================== Category Endpoints =====================
+
+app.get('/api/categories', (req, res) => {
+  const type = req.query.type || null;
+  const categories = listCategories(type);
+  res.json({ categories, count: categories.length });
 });
 
-// Verify subscription
-app.get('/api/subscriptions/verify/:id', (req, res) => {
-  const id = req.params.id;
-  const s = getSubscription(id);
-  if (!s) return res.status(404).json({ error: 'not_found' });
-  return res.json({ subscription: s });
+app.get('/api/categories/:id', (req, res) => {
+  const category = getCategory(req.params.id);
+  if (!category) return res.status(404).json({ error: 'not_found' });
+  res.json({ category });
 });
 
-// Create an ad campaign record and attempt to create on Meta (if configured)
-app.post('/api/ads/create', async (req, res) => {
-  const { name, platform, objective, budget, payload } = req.body || {};
-  if (!name || !platform) return res.status(400).json({ error: 'missing_fields' });
+app.post('/api/categories', (req, res) => {
+  const { name, type, description, icon_url } = req.body || {};
+  if (!name || !type) return res.status(400).json({ error: 'missing_fields' });
 
   const id = uuidv4();
-  const ad = { id, name, platform, objective: objective || 'BRAND_AWARENESS', budget: parseFloat(budget || 0), status: 'draft', payload, created_at: new Date().toISOString() };
+  const category = { id, name, type, description: description || null, icon_url: icon_url || null, created_at: new Date().toISOString() };
 
-  // If platform is 'meta' attempt to create a campaign using Meta Marketing API
-  if (platform === 'meta' || platform === 'facebook' || platform === 'instagram') {
-    const META_TOKEN = process.env.META_ACCESS_TOKEN || process.env.FLW_SECRET_KEY || '';
-    const META_ACCOUNT = process.env.META_AD_ACCOUNT_ID || '';
-    if (!META_TOKEN || !META_ACCOUNT) {
-      // store as draft and return
-      createAdRow(ad);
-      return res.json({ ad, warning: 'meta_not_configured' });
-    }
-
-    try {
-      // create campaign
-      const campaignResp = await axios.post(
-        `https://graph.facebook.com/v17.0/act_${META_ACCOUNT}/campaigns`,
-        null,
-        {
-          params: {
-            name: ad.name,
-            objective: ad.objective,
-            status: 'PAUSED',
-            access_token: META_TOKEN
-          }
-        }
-      );
-
-      const provider_id = campaignResp.data && campaignResp.data.id ? campaignResp.data.id : null;
-      ad.provider_id = provider_id;
-      ad.status = provider_id ? 'created' : 'error';
-      createAdRow(ad);
-      addPaymentEvent(ad.id, 'ad_created', { platform: 'meta', provider_id });
-      return res.json({ ad, provider_resp: campaignResp.data });
-    } catch (err) {
-      console.error('meta create error', err?.response?.data || err.message);
-      createAdRow(ad);
-      addPaymentEvent(ad.id, 'ad_create_failed', { error: err?.response?.data || err.message });
-      return res.status(500).json({ error: 'meta_create_failed', details: err?.response?.data || err.message, ad });
-    }
+  try {
+    createCategory(category);
+    res.json({ category });
+  } catch (e) {
+    res.status(500).json({ error: 'creation_failed', details: e.message });
   }
-
-  // Other platforms: for now persist as draft and return
-  createAdRow(ad);
-  return res.json({ ad, note: 'stored_as_draft' });
 });
 
-// Admin: list ads
-app.get('/api/admin/ads', (req, res) => {
-  const token = req.headers['x-admin-token'];
-  if (!token || token !== ADMIN_TOKEN) return res.status(401).json({ error: 'unauthorized' });
-  const rows = listAds();
-  res.json(rows);
+// ===================== Product Endpoints =====================
+
+app.get('/api/products', (req, res) => {
+  const { category_id, type } = req.query;
+  const products = listProducts(category_id || null, type || null);
+  res.json({ products, count: products.length });
 });
 
-// Create full ad campaign (Meta: campaign → adset → creative)
-app.post('/api/ads/create-full', async (req, res) => {
-  const { name, platform, objective, daily_budget, creative_title, creative_body, image_url, targeting } = req.body || {};
-  if (!name || !platform) return res.status(400).json({ error: 'missing_fields' });
+app.get('/api/products/:id', (req, res) => {
+  const product = getProduct(req.params.id);
+  if (!product) return res.status(404).json({ error: 'not_found' });
+  res.json({ product });
+});
+
+app.post('/api/products', (req, res) => {
+  const { name, category_id, type, unit, description, image_url } = req.body || {};
+  if (!name || !category_id || !type) return res.status(400).json({ error: 'missing_fields' });
 
   const id = uuidv4();
-  const ad = { id, name, platform, objective: objective || 'BRAND_AWARENESS', budget: parseFloat(daily_budget || 10), status: 'draft', payload: {}, created_at: new Date().toISOString() };
+  const product = { id, name, category_id, type, unit: unit || null, description: description || null, image_url: image_url || null, created_at: new Date().toISOString() };
 
-  if (platform === 'meta' || platform === 'facebook' || platform === 'instagram') {
-    if (!META_TOKEN || !META_ACCOUNT) {
-      createAdRow(ad);
-      return res.json({ ad, warning: 'meta_not_configured' });
-    }
-
-    try {
-      // Create campaign
-      const campaign_id = await retryAsync(() => createMetaCampaign(ad.name, ad.objective));
-      logAdEvent(id, 'campaign_created', { campaign_id });
-
-      // Create adset
-      const adset_id = await retryAsync(() => createMetaAdset(campaign_id, `${ad.name}-adset`, daily_budget * 100, targeting));
-      logAdEvent(id, 'adset_created', { adset_id });
-
-      // Create creative
-      const creative_id = await retryAsync(() => createMetaCreative(META_ACCOUNT, creative_title || ad.name, creative_body || ad.name, image_url || ''));
-      logAdEvent(id, 'creative_created', { creative_id });
-
-      // Create ad
-      const ad_id = await retryAsync(() => createMetaAd(adset_id, creative_id));
-      logAdEvent(id, 'ad_created', { ad_id, campaign_id, adset_id, creative_id });
-
-      ad.provider_id = ad_id;
-      ad.status = 'created';
-      ad.payload = { campaign_id, adset_id, creative_id, ad_id };
-      createAdRow(ad);
-      return res.json({ ad, components: { campaign_id, adset_id, creative_id, ad_id } });
-    } catch (err) {
-      console.error('Meta full flow error', err.message);
-      createAdRow(ad);
-      logAdEvent(id, 'error', { error: err.message });
-      return res.status(500).json({ error: 'meta_full_flow_failed', details: err.message, ad });
-    }
+  try {
+    createProduct(product);
+    const fullProduct = getProduct(id);
+    res.json({ product: fullProduct });
+  } catch (e) {
+    res.status(500).json({ error: 'creation_failed', details: e.message });
   }
-
-  createAdRow(ad);
-  return res.json({ ad, note: 'stored_as_draft' });
 });
 
-// Ad event webhook (receives events from Meta, Paystack, LinkedIn, Twitter)
-app.post('/api/ads/events/webhook', (req, res) => {
-  const body = req.body || {};
-  const source = req.headers['x-event-source'] || 'unknown';
+// ===================== Listing Endpoints =====================
 
-  // Log webhook receipt
-  console.log(`Ad event webhook from ${source}:`, body);
+app.post('/api/listings', (req, res) => {
+  const { product_id, seller_id, title, price, quantity, quantity_unit, description, image_url, certification } = req.body || {};
+  if (!product_id || !seller_id || !title || !price || !quantity) return res.status(400).json({ error: 'missing_fields' });
 
-  // Extract ad_id or campaign_id from various payload formats
-  let ad_id = body.ad_id || body.campaign_id || body.data?.ad_id || null;
+  const id = uuidv4();
+  const listing = {
+    id, product_id, seller_id, title, price: parseFloat(price), quantity: parseFloat(quantity),
+    quantity_unit: quantity_unit || 'unit', description: description || null, image_url: image_url || null, certification: certification || null,
+    status: 'active', created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+  };
 
-  // Handle Meta webhook
-  if (source === 'meta' || body.object === 'ad_campaign') {
-    const event_type = body.action || body.event || 'meta_event';
-    ad_id = body.campaign_id || ad_id;
-    if (ad_id) logAdEvent(ad_id, event_type, body);
-    return res.json({ ok: true });
+  try {
+    createListing(listing);
+    const fullListing = getListing(id);
+    res.json({ listing: fullListing });
+  } catch (e) {
+    res.status(500).json({ error: 'creation_failed', details: e.message });
   }
-
-  // Handle Paystack webhook for ad payments
-  if (source === 'paystack' && body.event === 'charge.success') {
-    const ref = body.data?.reference;
-    if (ref && ref.startsWith('ad_')) {
-      ad_id = ref.replace('ad_', '');
-      logAdEvent(ad_id, 'payment_success', body.data);
-      return res.json({ ok: true });
-    }
-  }
-
-  // Handle LinkedIn webhook
-  if (source === 'linkedin') {
-    const event_type = body.eventMuxData?.eventUrnResolutionTechnology?.[0] || 'linkedin_event';
-    if (ad_id) logAdEvent(ad_id, event_type, body);
-    return res.json({ ok: true });
-  }
-
-  // Handle Twitter webhook
-  if (source === 'twitter') {
-    const event_type = body.data?.type || 'twitter_event';
-    if (ad_id) logAdEvent(ad_id, event_type, body);
-    return res.json({ ok: true });
-  }
-
-  res.json({ ok: true });
 });
 
-// Get ad events
-app.get('/api/ads/:id/events', (req, res) => {
-  const ad_id = req.params.id;
-  const events = db.prepare(`SELECT * FROM ad_events WHERE ad_id = ? ORDER BY created_at DESC`).all(ad_id).map(e => {
-    e.data = e.data ? JSON.parse(e.data) : null;
-    return e;
+app.get('/api/listings', (req, res) => {
+  const { category_id, seller_id, type, search } = req.query;
+  const filters = {
+    category_id: category_id || null,
+    seller_id: seller_id || null,
+    type: type || null,
+    search: search || null
+  };
+  const listings = listListings(filters);
+  res.json({ listings, count: listings.length });
+});
+
+app.get('/api/listings/:id', (req, res) => {
+  const listing = getListing(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'not_found' });
+  res.json({ listing });
+});
+
+app.put('/api/listings/:id', (req, res) => {
+  const listing = getListing(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'not_found' });
+
+  const { title, description, price, quantity, status, image_url } = req.body || {};
+  const updates = {};
+  if (title !== undefined) updates.title = title;
+  if (description !== undefined) updates.description = description;
+  if (price !== undefined) updates.price = parseFloat(price);
+  if (quantity !== undefined) updates.quantity = parseFloat(quantity);
+  if (status !== undefined) updates.status = status;
+  if (image_url !== undefined) updates.image_url = image_url;
+
+  try {
+    updateListing(req.params.id, updates);
+    const updated = getListing(req.params.id);
+    res.json({ listing: updated });
+  } catch (e) {
+    res.status(500).json({ error: 'update_failed', details: e.message });
+  }
+});
+
+// ===================== Order Endpoints =====================
+
+app.post('/api/orders', (req, res) => {
+  const { buyer_id, listing_id, quantity, delivery_address, delivery_date, notes } = req.body || {};
+  if (!buyer_id || !listing_id || !quantity) return res.status(400).json({ error: 'missing_fields' });
+
+  const listing = getListing(listing_id);
+  if (!listing) return res.status(404).json({ error: 'listing_not_found' });
+
+  if (quantity > listing.quantity) return res.status(400).json({ error: 'insufficient_quantity_available' });
+
+  const id = uuidv4();
+  const unit_price = listing.price;
+  const total_amount = unit_price * quantity;
+
+  const order = {
+    id, buyer_id, listing_id, quantity: parseFloat(quantity), unit_price,
+    total_amount, delivery_address: delivery_address || null, delivery_date: delivery_date || null, notes: notes || null,
+    status: 'pending', payment_status: 'pending', created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+  };
+
+  try {
+    createOrder(order);
+    // Reduce listing quantity
+    updateListing(listing_id, { quantity: listing.quantity - quantity });
+    const fullOrder = getOrder(id);
+    res.json({ order: fullOrder });
+  } catch (e) {
+    res.status(500).json({ error: 'creation_failed', details: e.message });
+  }
+});
+
+app.get('/api/orders', (req, res) => {
+  const { buyer_id, seller_id } = req.query;
+  const orders = listOrders(buyer_id || null, seller_id || null);
+  res.json({ orders, count: orders.length });
+});
+
+app.get('/api/orders/:id', (req, res) => {
+  const order = getOrder(req.params.id);
+  if (!order) return res.status(404).json({ error: 'not_found' });
+  res.json({ order });
+});
+
+app.put('/api/orders/:id', (req, res) => {
+  const order = getOrder(req.params.id);
+  if (!order) return res.status(404).json({ error: 'not_found' });
+
+  const { status, payment_status, delivery_date } = req.body || {};
+  const updates = {};
+  if (status !== undefined) updates.status = status;
+  if (payment_status !== undefined) updates.payment_status = payment_status;
+  if (delivery_date !== undefined) updates.delivery_date = delivery_date;
+
+  try {
+    updateOrder(req.params.id, updates);
+    const updated = getOrder(req.params.id);
+    res.json({ order: updated });
+  } catch (e) {
+    res.status(500).json({ error: 'update_failed', details: e.message });
+  }
+});
+
+// ===================== Review Endpoints =====================
+
+app.post('/api/reviews', (req, res) => {
+  const { order_id, reviewer_id, reviewee_id, rating, comment } = req.body || {};
+  if (!order_id || !reviewer_id || !reviewee_id || rating === undefined) return res.status(400).json({ error: 'missing_fields' });
+
+  const id = uuidv4();
+  try {
+    db.prepare(`INSERT INTO reviews (id, order_id, reviewer_id, reviewee_id, rating, comment, created_at) VALUES (?,?,?,?,?,?,?)`).run(
+      id, order_id, reviewer_id, reviewee_id, rating, comment || null, new Date().toISOString()
+    );
+    const review = db.prepare(`SELECT * FROM reviews WHERE id = ?`).get(id);
+    res.json({ review });
+  } catch (e) {
+    res.status(500).json({ error: 'creation_failed', details: e.message });
+  }
+});
+
+app.get('/api/reviews/user/:user_id', (req, res) => {
+  const reviews = db.prepare(`SELECT * FROM reviews WHERE reviewee_id = ? ORDER BY created_at DESC`).all(req.params.user_id);
+  res.json({ reviews, count: reviews.length });
+});
+
+app.get('/api/reviews/order/:order_id', (req, res) => {
+  const reviews = db.prepare(`SELECT * FROM reviews WHERE order_id = ?`).all(req.params.order_id);
+  res.json({ reviews, count: reviews.length });
+});
+
+// ===================== Favorites/Wishlist Endpoints =====================
+
+app.post('/api/favorites', (req, res) => {
+  const { user_id, listing_id } = req.body || {};
+  if (!user_id || !listing_id) return res.status(400).json({ error: 'missing_fields' });
+
+  const id = uuidv4();
+  try {
+    db.prepare(`INSERT INTO favorites (id, user_id, listing_id, created_at) VALUES (?,?,?,?)`).run(id, user_id, listing_id, new Date().toISOString());
+    res.json({ message: 'added_to_favorites', favorite: { id, user_id, listing_id } });
+  } catch (e) {
+    res.status(500).json({ error: 'creation_failed', details: e.message });
+  }
+});
+
+app.get('/api/favorites/:user_id', (req, res) => {
+  const favorites = db.prepare(`SELECT f.*, l.*, p.name as product_name FROM favorites f LEFT JOIN listings l ON f.listing_id = l.id LEFT JOIN products p ON l.product_id = p.id WHERE f.user_id = ?`).all(req.params.user_id);
+  res.json({ favorites, count: favorites.length });
+});
+
+app.delete('/api/favorites/:id', (req, res) => {
+  try {
+    db.prepare(`DELETE FROM favorites WHERE id = ?`).run(req.params.id);
+    res.json({ message: 'removed_from_favorites' });
+  } catch (e) {
+    res.status(500).json({ error: 'deletion_failed', details: e.message });
+  }
+});
+
+// ===================== Messages Endpoints =====================
+
+app.post('/api/messages', (req, res) => {
+  const { sender_id, receiver_id, subject, content } = req.body || {};
+  if (!sender_id || !receiver_id || !content) return res.status(400).json({ error: 'missing_fields' });
+
+  const id = uuidv4();
+  try {
+    db.prepare(`INSERT INTO messages (id, sender_id, receiver_id, subject, content, created_at) VALUES (?,?,?,?,?,?)`).run(
+      id, sender_id, receiver_id, subject || null, content, new Date().toISOString()
+    );
+    res.json({ message: { id, sender_id, receiver_id, subject, content, read: false } });
+  } catch (e) {
+    res.status(500).json({ error: 'send_failed', details: e.message });
+  }
+});
+
+app.get('/api/messages/:user_id', (req, res) => {
+  const messages = db.prepare(`SELECT * FROM messages WHERE receiver_id = ? OR sender_id = ? ORDER BY created_at DESC`).all(req.params.user_id, req.params.user_id);
+  res.json({ messages, count: messages.length });
+});
+
+app.put('/api/messages/:id/read', (req, res) => {
+  try {
+    db.prepare(`UPDATE messages SET read = 1 WHERE id = ?`).run(req.params.id);
+    res.json({ message: 'marked_as_read' });
+  } catch (e) {
+    res.status(500).json({ error: 'update_failed', details: e.message });
+  }
+});
+
+// ===================== Stats/Dashboard Endpoints =====================
+
+app.get('/api/stats/marketplace', (req, res) => {
+  const totalUsers = db.prepare(`SELECT COUNT(*) as count FROM users`).get().count;
+  const totalListings = db.prepare(`SELECT COUNT(*) as count FROM listings WHERE status = 'active'`).get().count;
+  const totalOrders = db.prepare(`SELECT COUNT(*) as count FROM orders`).get().count;
+  const totalRevenue = db.prepare(`SELECT SUM(total_amount) as total FROM orders WHERE payment_status = 'paid'`).get().total || 0;
+
+  res.json({
+    stats: {
+      total_users: totalUsers,
+      total_listings: totalListings,
+      total_orders: totalOrders,
+      total_revenue: totalRevenue
+    }
   });
-  res.json({ ad_id, events });
 });
 
-// Get ad performance/metrics
-app.get('/api/ads/:id/performance', (req, res) => {
-  const ad_id = req.params.id;
-  const ad = db.prepare(`SELECT * FROM ads WHERE id = ?`).get(ad_id);
-  if (!ad) return res.status(404).json({ error: 'not_found' });
-
-  ad.payload = ad.payload ? JSON.parse(ad.payload) : null;
-
-  // Get recent events for metrics summary
-  const events = db.prepare(`SELECT * FROM ad_events WHERE ad_id = ? ORDER BY created_at DESC LIMIT 100`).all(ad_id).map(e => {
-    e.data = e.data ? JSON.parse(e.data) : null;
-    return e;
-  });
-
-  // Simple aggregation: count by event type
-  const summary = events.reduce((acc, e) => {
-    if (e.event_type && e.data?.impressions) acc.impressions = (acc.impressions || 0) + e.data.impressions;
-    if (e.event_type && e.data?.clicks) acc.clicks = (acc.clicks || 0) + e.data.clicks;
-    if (e.event_type && e.data?.spend) acc.spend = (acc.spend || 0) + e.data.spend;
-    return acc;
-  }, {});
-
-  summary.ctr = summary.impressions && summary.clicks ? ((summary.clicks / summary.impressions) * 100).toFixed(2) : 0;
-  summary.cpc = summary.clicks && summary.spend ? (summary.spend / summary.clicks).toFixed(2) : 0;
-
-  res.json({ ad_id, ad, events: events.slice(0, 10), performance: summary });
-});
-
-// Paystack webhook for ad payment notifications
-app.post('/api/ads/paystack-webhook', (req, res) => {
-  const hash = req.headers['x-paystack-signature'];
-  // In production, verify hash against PAYSTACK_SECRET
-  const body = req.body || {};
-
-  if (body.event === 'charge.success') {
-    const reference = body.data?.reference;
-    if (reference && reference.startsWith('ad_')) {
-      const ad_id = reference.replace('ad_', '');
-      logAdEvent(ad_id, 'paystack_payment', body.data);
-    }
-  }
-
-  res.json({ ok: true });
-});
-
-// Create ad on multiple platforms simultaneously
-app.post('/api/ads/multi-platform', async (req, res) => {
-  const { name, platforms, budget, objective } = req.body || {};
-  if (!name || !platforms || platforms.length === 0) return res.status(400).json({ error: 'missing_fields' });
-
-  const results = {};
-  const errors = {};
-
-  for (const platform of platforms) {
-    const id = uuidv4();
-    try {
-      if (platform === 'meta') {
-        if (META_TOKEN && META_ACCOUNT) {
-          const cid = await retryAsync(() => createMetaCampaign(name, objective || 'BRAND_AWARENESS'));
-          results[platform] = { id, provider_id: cid, status: 'created' };
-        } else {
-          results[platform] = { id, status: 'draft', error: 'not_configured' };
-        }
-      } else if (platform === 'google_ads') {
-        const gid = await createGoogleAdsCampaign('customer_id', name, budget);
-        results[platform] = { id, provider_id: gid, status: 'draft' };
-      } else if (platform === 'linkedin') {
-        const lid = await createLinkedInCampaign(name, budget);
-        results[platform] = { id, provider_id: lid, status: 'draft' };
-      } else if (platform === 'twitter') {
-        const tid = await createTwitterAd(name, budget);
-        results[platform] = { id, provider_id: tid, status: 'draft' };
-      } else {
-        results[platform] = { id, status: 'unknown' };
-      }
-    } catch (err) {
-      errors[platform] = err.message;
-      results[platform] = { id, status: 'error', error: err.message };
-    }
-  }
-
-  res.json({ results, errors: Object.keys(errors).length > 0 ? errors : null });
-});
+// ===================== Server Start =====================
 
 if (process.argv.includes('--test')) {
   console.log('ok');
@@ -601,5 +652,7 @@ if (process.argv.includes('--test')) {
 }
 
 app.listen(port, () => {
-  console.log(`FarmPro backend listening on port ${port}`);
+  console.log(`FarmPro Marketplace Backend listening on port ${port}`);
 });
+
+

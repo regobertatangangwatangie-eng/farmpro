@@ -1,53 +1,181 @@
-# FarmPro - demo nginx Docker + CI/CD + infra skeleton
-# FarmPro - demo nginx Docker + CI/CD + infra skeleton
+# FarmPro - Farmer-to-Buyer Marketplace Platform
 
-This repository contains a minimal set of artifacts to build, test and deploy a Dockerized Nginx image for FarmPro and to demonstrate GitHub Actions and Jenkins pipelines, Kubernetes manifests, Terraform skeleton and an Ansible playbook.
+## Overview
 
-Files added:
-- `Dockerfile` - image build for nginx (demonstrates common Dockerfile instructions)
-- `nginx/nginx.conf` - nginx configuration
-- `static/`, `docs/` - sample site content
-- `.github/workflows/ci.yml` - GitHub Actions workflow (build/push/smoke-test)
-- `Jenkinsfile` - Jenkins pipeline example (build/push/deploy)
-- `k8s/` - Kubernetes `Deployment` and `Service`
-- `terraform/` - providers + ECR example
-- `ansible/deploy.yml` - Ansible playbook to pull/run container
+FarmPro v2.0 is a comprehensive digital marketplace platform that connects local farmers in developing regions with international buyers. Farmers can sell agricultural products (coffee, cocoa, yams, plantain, corn, etc.) and purchase farming equipment and supplies (fertilizers, tools, seeds, pesticides, irrigation systems).
 
-Quick local test:
+### Key Features:
+- **Multi-role Marketplace**: Support for buyers, local farmers (sellers), and farm supply sellers
+- **Product Catalog**: Browse farm products and farm items with search and filter capabilities
+- **Listings Management**: Farmers create and manage product listings with pricing and inventory
+- **Order System**: Buyers place orders with automatic inventory management
+- **User Profiles**: Registration and profile management for different user types
+- **Reviews & Ratings**: Community trust building through reviews
+- **Messaging**: Direct communication between buyers and sellers
+- **Dashboard & Analytics**: Marketplace statistics and user dashboards
 
-1. Build image:
+This repository also demonstrates full-stack deployment using Docker, GitHub Actions CI/CD, Kubernetes, Terraform, and Ansible.
+
+Files:
+- `Dockerfile` - Nginx image serving React frontend
+- `nginx/nginx.conf` - Nginx configuration
+- `backend/` - Node.js Express API + SQLite
+- `frontend/` - React marketplace UI
+- `.github/workflows/ci.yml` - GitHub Actions workflow
+- `k8s/`, `helm/`, `terraform/`, `ansible/` - Infrastructure files
+- `docker-compose.yml` - Local development with Docker Compose
+
+## Marketplace API Endpoints
+
+### Users
+- `POST /api/users/register` - Register new account (farmer, buyer, seller)
+- `GET /api/users/:id` - Get user profile
+- `GET /api/users` - List all users
+- `GET /api/users/role/seller` - List all sellers
+- `PUT /api/users/:id` - Update user profile
+
+### Products & Catalog
+- `GET /api/categories` - List all categories
+- `POST /api/categories` - Create new category
+- `GET /api/products` - List products (filterable by type/category)
+- `POST /api/products` - Add new farm product to catalog
+- `GET /api/products/:id` - Get product details
+
+### Listings
+- `POST /api/listings` - Create product listing (sellers)
+- `GET /api/listings` - Browse active listings (searchable)
+- `GET /api/listings/:id` - Get listing details
+- `PUT /api/listings/:id` - Update listing
+
+### Orders
+- `POST /api/orders` - Create order (buyer)
+- `GET /api/orders` - Get user's orders
+- `PUT /api/orders/:id` - Update order status
+
+### Reviews & Ratings
+- `POST /api/reviews` - Add review to order
+- `GET /api/reviews/user/:user_id` - Get user reviews
+
+### Wishlist
+- `POST /api/favorites` - Add to wishlist
+- `GET /api/favorites/:user_id` - Get wishlist
+
+### Messaging
+- `POST /api/messages` - Send message
+- `GET /api/messages/:user_id` - Get user messages
+
+### Stats
+- `GET /api/stats/marketplace` - Marketplace statistics
+
+## Default Products & Categories
+
+The system comes pre-seeded with common farm products and items:
+
+**Farm Products (for farmers to sell):**
+- Coffee (Arabica, Robusta)
+- Cocoa (beans, powder)
+- Yams, Plantain, Corn, Rice
+- Vegetables, Fruits
+
+**Farm Items (for buyers to purchase):**
+- Fertilizers (NPK, Organic)
+- Tools (Hoe, Spade, Machete, Watering Can)
+- Seeds (Corn, Rice)
+- Pesticides, Irrigation Equipment
+
+New products and categories can be added dynamically via the API.
+
+## Getting Started
+
+### Local Development
+
+1. **Start with Docker Compose:**
 ```bash
-docker build -t farmpro:local -f Dockerfile .
+cd /path/to/FARMPRO
+docker-compose up -d
 ```
-2. Run container:
+This starts:
+- Backend API on `localhost:3000`
+- Frontend on `localhost:3001` 
+
+2. **Or run manually:**
 ```bash
-docker run --rm -p 8080:80 farmpro:local
-# then open http://localhost:8080
+#Terminal 1: Backend
+cd backend
+npm install
+npm start
+
+# Terminal 2: Frontend
+cd frontend
+npm install
+npm start
 ```
 
-CI notes:
-- Set `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets in GitHub for the workflow to push images.
-- Jenkins expects credentials with id `dockerhub` (username/password) and a kubeconfig available for the deploy stage.
+3. **Access the marketplace:**
+   - Frontend: http://localhost:3001 (or http://localhost:3000 if through nginx)
+   - Backend API: http://localhost:3000/api
 
-Terraform notes:
-- `terraform init` then `terraform apply` in the `terraform` folder will create an ECR repo (requires AWS credentials configured).
+## Frontend Features
 
-Ansible notes:
-- The playbook uses `community.docker` modules and requires Python/Docker on hosts.
+The React UI provides a complete marketplace experience:
 
-Additional components added:
-- `backend/` - Node.js Express API + Dockerfile
-- `frontend/` - React app skeleton (build copied into `static/` by CI)
-- `helm/farmpro` - Helm chart to deploy frontend and backend to Kubernetes
-- `android-app/` - Android (Kotlin) skeleton that can call the backend (use emulator or build in Android Studio)
+### For Buyers:
+- **Browse Products**: Search and filter farm products and items
+- **Shopping Cart**: Add items and checkout  
+- **Order Management**: Track orders and status
+- **User Profile**: Registration and account management
 
-CI update:
-- GitHub Actions workflow now builds frontend, backend and the nginx image and copies production frontend build into `static/` before building the nginx image.
+### For Farmers & Sellers:
+- **Create Listings**: Post farm products with pricing and quantity
+- **Inventory**: Manage available stock
+- **Sales Dashboard**: View and manage orders from buyers
+- **Profile**: Build trust with ratings and reviews
 
-Local quickstart (dev):
+## Tech Stack
 
-1. Run backend locally:
+- **Backend**: Node.js + Express + SQLite
+- **Frontend**: React 18
+- **Database**: SQLite (see `backend/db.js`)
+- **Containerization**: Docker
+- **Orchestration**: Docker Compose, Kubernetes (Helm)
+- **CI/CD**: GitHub Actions
+- **IaC**: Terraform, Ansible
+
+## Production Deployment
+
+### Docker Build (Local):
 ```bash
+docker build -t farmpro-frontend -f Dockerfile .
+docker run --rm -p 80:80 farmpro-frontend
+```
+
+### CI/CD via GitHub Actions:
+The `.github/workflows/ci.yml` automatically:
+- Builds frontend & backend
+- Creates Docker images
+- Runs smoke tests
+- Pushes to Docker registry (if configured)
+
+Set secrets in GitHub:
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+
+### Kubernetes Deployment:
+```bash
+helm install farmpro ./helm/farmpro --namespace default
+```
+
+### Terraform (AWS ECR):
+```bash
+cd terraform
+terraform init
+terraform apply
+```
+
+### Ansible Deployment:
+```bash
+ansible-playbook -i inventory ansible/deploy.yml
+```
 cd backend
 npm install
 npm start

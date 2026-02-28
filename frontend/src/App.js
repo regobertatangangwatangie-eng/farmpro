@@ -1,103 +1,406 @@
 import React, { useEffect, useState } from 'react';
+import './App.css';
 
 function App() {
-  const [farms, setFarms] = useState([]);
-  const [plans, setPlans] = useState([]);
-  const [loadingPlans, setLoadingPlans] = useState(true);
-  const [selectedPlan, setSelectedPlan] = useState(null);
-  const [customerName, setCustomerName] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('mobile_money');
-  const [mobileProvider, setMobileProvider] = useState('mtn');
-  const [responseData, setResponseData] = useState(null);
-  const [adminToken, setAdminToken] = useState('');
-  const [adminSubs, setAdminSubs] = useState(null);
-  const [adminAds, setAdminAds] = useState(null);
-  const [adName, setAdName] = useState('');
-  const [adPlatforms, setAdPlatforms] = useState(['meta']);
-  const [adBudget, setAdBudget] = useState(10);
-  const [selectedAdId, setSelectedAdId] = useState(null);
-  const [adPerformance, setAdPerformance] = useState(null);
+  // ========== State ==========
+  const [currentPage, setCurrentPage] = useState('browse'); // browse, seller, user-profile, orders
+  const [currentUser, setCurrentUser] = useState(null);
+  const [listings, setListings] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [cart, setCart] = useState([]);
+  const [userEmail, setUserEmail] = useState('');
+  const [userName, setUserName] = useState('');
+  const [userRole, setUserRole] = useState('buyer');
+  const [userLocation, setUserLocation] = useState('');
+  const [userCountry, setUserCountry] = useState('');
+  const [sellerListingTitle, setSellerListingTitle] = useState('');
+  const [sellerListingProduct, setSellerListingProduct] = useState('');
+  const [sellerListingPrice, setSellerListingPrice] = useState('');
+  const [sellerListingQuantity, setSellerListingQuantity] = useState('');
+  const [sellerListingUnit, setSellerListingUnit] = useState('kg');
+  const [orders, setOrders] = useState([]);
+  const [stats, setStats] = useState(null);
 
+  // ========== Effects ==========
   useEffect(() => {
-    fetch('/api/farms')
-      .then(r => r.json())
-      .then(setFarms)
-      .catch(() => setFarms([]));
-
-    fetch('/api/subscriptions/plans')
-      .then(r => r.json())
-      .then(data => setPlans(data))
-      .catch(() => setPlans([]))
-      .finally(() => setLoadingPlans(false));
+    fetchCategories();
+    fetchProducts();
+    fetchMarketplaceStats();
+    // Try to load user from localStorage
+    const saved = localStorage.getItem('farmpro_user');
+    if (saved) setCurrentUser(JSON.parse(saved));
   }, []);
 
-  const createSubscription = async () => {
-    if (!selectedPlan) return alert('Select a plan');
-    if (!customerName) return alert('Enter your name');
+  useEffect(() => {
+    fetchListings();
+  }, [selectedCategory, searchTerm]);
 
-    const payload = {
-      plan: selectedPlan,
-      customer: { name: customerName },
-      payment: { method: paymentMethod, provider: paymentMethod === 'mobile_money' ? mobileProvider : 'card' }
-    };
+  useEffect(() => {
+    if (currentUser) {
+      fetchOrders();
+    }
+  }, [currentUser]);
 
-    const res = await fetch('/api/subscriptions/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    const data = await res.json();
-    setResponseData(data);
-
-    // If card flow with checkout_url, open it in new tab
-    if (data && data.subscription && data.subscription.payment && data.subscription.payment.instructions && data.subscription.payment.instructions.checkout_url) {
-      window.open(data.subscription.payment.instructions.checkout_url, '_blank');
+  // ========== API Calls ==========
+  const fetchCategories = async () => {
+    try {
+      const res = await fetch('/api/categories');
+      const data = await res.json();
+      setCategories(data.categories || []);
+    } catch (e) {
+      console.error('Error fetching categories:', e);
     }
   };
 
-  return (
-    <div style={{ padding: 24, fontFamily: 'Arial, sans-serif' }}>
-      <h1>FarmPro Subscriptions</h1>
+  const fetchProducts = async (type = null) => {
+    try {
+      const url = type ? `/api/products?type=${type}` : '/api/products';
+      const res = await fetch(url);
+      const data = await res.json();
+      setProducts(data.products || []);
+    } catch (e) {
+      console.error('Error fetching products:', e);
+    }
+  };
 
-      <section style={{ marginBottom: 24 }}>
-        <h2>Available Plans</h2>
-        {loadingPlans ? <div>Loading plans...</div> : (
-          <div>
-            {plans.map(p => (
-              <label key={p.id} style={{ display: 'block', marginBottom: 8 }}>
-                <input type="radio" name="plan" value={p.id} onChange={() => setSelectedPlan(p.id)} /> {p.name} — ${p.price_usd}/{p.interval} — {p.description}
-              </label>
-            ))}
+  const fetchListings = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (selectedCategory) params.append('category_id', selectedCategory);
+      if (searchTerm) params.append('search', searchTerm);
+      const url = `/api/listings?${params.toString()}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      setListings(data.listings || []);
+    } catch (e) {
+      console.error('Error fetching listings:', e);
+    }
+  };
+
+  const fetchOrders = async () => {
+    if (!currentUser) return;
+    try {
+      const url = currentUser.role.includes('buyer') ? `/api/orders?buyer_id=${currentUser.id}` : `/api/orders?seller_id=${currentUser.id}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      setOrders(data.orders || []);
+    } catch (e) {
+      console.error('Error fetching orders:', e);
+    }
+  };
+
+  const fetchMarketplaceStats = async () => {
+    try {
+      const res = await fetch('/api/stats/marketplace');
+      const data = await res.json();
+      setStats(data.stats);
+    } catch (e) {
+      console.error('Error fetching stats:', e);
+    }
+  };
+
+  const registerUser = async () => {
+    if (!userName || !userEmail || !userRole) return alert('Fill all fields');
+    try {
+      const res = await fetch('/api/users/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: userName,
+          email: userEmail,
+          role: userRole,
+          location: userLocation || null,
+          country: userCountry || null
+        })
+      });
+      const user = await res.json();
+      if (user.user) {
+        setCurrentUser(user.user);
+        localStorage.setItem('farmpro_user', JSON.stringify(user.user));
+        alert('Registration successful!');
+        setCurrentPage('browse');
+      }
+    } catch (e) {
+      alert('Error registering: ' + e.message);
+    }
+  };
+
+  const createListing = async () => {
+    if (!currentUser || !sellerListingTitle || !sellerListingProduct || !sellerListingPrice || !sellerListingQuantity) {
+      return alert('Fill all fields');
+    }
+    try {
+      const res = await fetch('/api/listings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id: sellerListingProduct,
+          seller_id: currentUser.id,
+          title: sellerListingTitle,
+          price: parseFloat(sellerListingPrice),
+          quantity: parseFloat(sellerListingQuantity),
+          quantity_unit: sellerListingUnit
+        })
+      });
+      const data = await res.json();
+      if (data.listing) {
+        alert('Listing created!');
+        setSellerListingTitle('');
+        setSellerListingProduct('');
+        setSellerListingPrice('');
+        setSellerListingQuantity('');
+        fetchListings();
+      }
+    } catch (e) {
+      alert('Error creating listing: ' + e.message);
+    }
+  };
+
+  const addToCart = (listing) => {
+    setCart([...cart, {...listing, cartQty: 1}]);
+  };
+
+  const removeFromCart = (index) => {
+    setCart(cart.filter((_, i) => i !== index));
+  };
+
+  const checkout = async () => {
+    if (!currentUser || cart.length === 0) return alert('Add items to cart and login');
+    try {
+      for (const item of cart) {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            buyer_id: currentUser.id,
+            listing_id: item.id,
+            quantity: item.cartQty || 1
+          })
+        });
+        const order = await res.json();
+        if (!order.order) throw new Error('Order creation failed');
+      }
+      alert('Orders created successfully!');
+      setCart([]);
+      fetchOrders();
+    } catch (e) {
+      alert('Error checking out: ' + e.message);
+    }
+  };
+
+  // ========== Render Functions ==========
+  const renderBrowse = () => (
+    <div>
+      <h2>📦 Farm Products & Items Marketplace</h2>
+      <div style={{ marginBottom: 16 }}>
+        <input 
+          type="text" 
+          placeholder="Search products..." 
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={{ padding: 8, width: 300, marginRight: 8 }}
+        />
+        <select 
+          value={selectedCategory || ''} 
+          onChange={(e) => setSelectedCategory(e.target.value || null)}
+          style={{ padding: 8 }}
+        >
+          <option value="">All Categories</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+
+      <h3>Available Listings ({listings.length})</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+        {listings.map(listing => (
+          <div key={listing.id} style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
+            <h4>{listing.title}</h4>
+            <p><strong>Product:</strong> {listing.product_name}</p>
+            <p><strong>Seller:</strong> {listing.seller_name}</p>
+            <p><strong>Price:</strong> ${listing.price}/{listing.quantity_unit}</p>
+            <p><strong>Quantity Available:</strong> {listing.quantity} {listing.quantity_unit}</p>
+            <button onClick={() => addToCart(listing)} style={{ padding: '8px 16px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+              Add to Cart
+            </button>
           </div>
-        )}
-      </section>
+        ))}
+      </div>
 
-      <section style={{ marginBottom: 24 }}>
-        <h2>Customer</h2>
-        <input placeholder="Full name" value={customerName} onChange={e => setCustomerName(e.target.value)} style={{ padding: 8, width: 300 }} />
-      </section>
-
-      <section style={{ marginBottom: 24 }}>
-        <h2>Payment</h2>
-        <div style={{ marginBottom: 8 }}>
-          <label style={{ marginRight: 12 }}>
-            <input type="radio" name="payment" checked={paymentMethod === 'mobile_money'} onChange={() => setPaymentMethod('mobile_money')} /> Mobile Money
-          </label>
-          <label>
-            <input type="radio" name="payment" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} /> Card / International
-          </label>
+      {cart.length > 0 && (
+        <div style={{ marginTop: 24, padding: 16, backgroundColor: '#f0f0f0', borderRadius: 8 }}>
+          <h3>🛒 Cart ({cart.length} items)</h3>
+          {cart.map((item, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span>{item.title} - ${item.price}</span>
+              <button onClick={() => removeFromCart(i)} style={{ backgroundColor: '#ff6b6b', color: 'white', border: 'none', padding: '4px 8px', cursor: 'pointer' }}>Remove</button>
+            </div>
+          ))}
+          <button onClick={checkout} style={{ padding: '10px 20px', backgroundColor: '#2196F3', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', marginTop: 12 }}>
+            Checkout
+          </button>
         </div>
+      )}
+    </div>
+  );
 
-        {paymentMethod === 'mobile_money' && (
-          <div>
-            <label style={{ display: 'block' }}>
-              Provider:
-              <select value={mobileProvider} onChange={e => setMobileProvider(e.target.value)} style={{ marginLeft: 8 }}>
-                <option value="mtn">MTN Mobile Money</option>
-                <option value="orange">Orange Money</option>
-              </select>
-            </label>
+  const renderRegister = () => (
+    <div style={{ maxWidth: 500 }}>
+      <h2>Register Account</h2>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ display: 'block', marginBottom: 4 }}>Email:</label>
+        <input type="email" value={userEmail} onChange={(e) => setUserEmail(e.target.value)} style={{ padding: 8, width: '100%' }} />
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ display: 'block', marginBottom: 4 }}>Name:</label>
+        <input type="text" value={userName} onChange={(e) => setUserName(e.target.value)} style={{ padding: 8, width: '100%' }} />
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ display: 'block', marginBottom: 4 }}>Account Type:</label>
+        <select value={userRole} onChange={(e) => setUserRole(e.target.value)} style={{ padding: 8, width: '100%' }}>
+          <option value="buyer">Buyer</option>
+          <option value="farmer">Farmer (Can sell products)</option>
+          <option value="seller">Seller (Farm items)</option>
+          <option value="farmer,seller">Both Farmer & Seller</option>
+        </select>
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ display: 'block', marginBottom: 4 }}>Location:</label>
+        <input type="text" value={userLocation} onChange={(e) => setUserLocation(e.target.value)} style={{ padding: 8, width: '100%' }} placeholder="e.g., Douala" />
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ display: 'block', marginBottom: 4 }}>Country:</label>
+        <input type="text" value={userCountry} onChange={(e) => setUserCountry(e.target.value)} style={{ padding: 8, width: '100%' }} placeholder="e.g., Cameroon" />
+      </div>
+      <button onClick={registerUser} style={{ padding: '10px 24px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+        Register
+      </button>
+    </div>
+  );
+
+  const renderSeller = () => (
+    <div>
+      <h2>📝 Create Product Listing</h2>
+      <div style={{ maxWidth: 500 }}>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', marginBottom: 4 }}>Listing Title:</label>
+          <input type="text" value={sellerListingTitle} onChange={(e) => setSellerListingTitle(e.target.value)} style={{ padding: 8, width: '100%' }} placeholder="e.g., Fresh Arabica Coffee Beans" />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', marginBottom: 4 }}>Product:</label>
+          <select value={sellerListingProduct} onChange={(e) => setSellerListingProduct(e.target.value)} style={{ padding: 8, width: '100%' }}>
+            <option value="">Select a product</option>
+            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', marginBottom: 4 }}>Price per Unit ($):</label>
+          <input type="number" value={sellerListingPrice} onChange={(e) => setSellerListingPrice(e.target.value)} style={{ padding: 8, width: '100%' }} step="0.01" />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', marginBottom: 4 }}>Quantity Available:</label>
+          <input type="number" value={sellerListingQuantity} onChange={(e) => setSellerListingQuantity(e.target.value)} style={{ padding: 8, width: '100%' }} step="1" />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', marginBottom: 4 }}>Unit:</label>
+          <select value={sellerListingUnit} onChange={(e) => setSellerListingUnit(e.target.value)} style={{ padding: 8, width: '100%' }}>
+            <option value="kg">kg</option>
+            <option value="lb">lb</option>
+            <option value="piece">piece</option>
+            <option value="bunch">bunch</option>
+            <option value="liter">liter</option>
+            <option value="meter">meter</option>
+          </select>
+        </div>
+        <button onClick={createListing} style={{ padding: '10px 24px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+          Create Listing
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderOrders = () => (
+    <div>
+      <h2>📋 My Orders</h2>
+      {orders.length === 0 ? (
+        <p>No orders yet</p>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ backgroundColor: '#f0f0f0' }}>
+              <th style={{ padding: 12, textAlign: 'left', borderBottom: '1px solid #ddd' }}>Product</th>
+              <th style={{ padding: 12, textAlign: 'left', borderBottom: '1px solid #ddd' }}>Quantity</th>
+              <th style={{ padding: 12, textAlign: 'left', borderBottom: '1px solid #ddd' }}>Total</th>
+              <th style={{ padding: 12, textAlign: 'left', borderBottom: '1px solid #ddd' }}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map(o => (
+              <tr key={o.id}>
+                <td style={{ padding: 12, borderBottom: '1px solid #ddd' }}>{o.product_name}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #ddd' }}>{o.quantity} {o.quantity_unit}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #ddd' }}>${o.total_amount}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #ddd' }}>{o.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+
+  // ========== Main Render ==========
+  return (
+    <div style={{ padding: 24, fontFamily: 'Arial, sans-serif', maxWidth: 1200, margin: '0 auto' }}>
+      <header style={{ marginBottom: 24, borderBottom: '2px solid #4CAF50', paddingBottom: 16 }}>
+        <h1>🌾 FarmPro Marketplace v2.0</h1>
+        <p>Connecting Local Farmers with International Buyers</p>
+        {stats && <p style={{ fontSize: 12, color: '#666' }}>
+          {stats.total_users} Users • {stats.total_listings} Active Listings • {stats.total_orders} Orders
+        </p>}
+      </header>
+
+      <nav style={{ marginBottom: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <button onClick={() => setCurrentPage('browse')} style={{ padding: '8px 16px', backgroundColor: currentPage === 'browse' ? '#4CAF50' : '#ddd', color: currentPage === 'browse' ? 'white' : 'black', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+          🛍️ Browse
+        </button>
+        {currentUser ? (
+          <>
+            <button onClick={() => setCurrentPage('orders')} style={{ padding: '8px 16px', backgroundColor: currentPage === 'orders' ? '#4CAF50' : '#ddd', color: currentPage === 'orders' ? 'white' : 'black', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+              📋 My Orders
+            </button>
+            {currentUser.role.includes('farmer') && (
+              <button onClick={() => setCurrentPage('seller')} style={{ padding: '8px 16px', backgroundColor: currentPage === 'seller' ? '#4CAF50' : '#ddd', color: currentPage === 'seller' ? 'white' : 'black', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+                📝 Sell Products
+              </button>
+            )}
+            <div style={{ marginLeft: 'auto' }}>
+              <span style={{ marginRight: 12 }}>Welcome, <strong>{currentUser.name}</strong></span>
+              <button onClick={() => { setCurrentUser(null); localStorage.removeItem('farmpro_user'); }} style={{ padding: '8px 16px', backgroundColor: '#f44336', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+                Logout
+              </button>
+            </div>
+          </>
+        ) : (
+          <button onClick={() => setCurrentPage('register')} style={{ padding: '8px 16px', backgroundColor: '#2196F3', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+            📝 Register / Login
+          </button>
+        )}
+      </nav>
+
+      <main>
+        {currentPage === 'browse' && renderBrowse()}
+        {currentPage === 'register' && renderRegister()}
+        {currentPage === 'seller' && currentUser && renderSeller()}
+        {currentPage === 'orders' && currentUser && renderOrders()}
+      </main>
+    </div>
+  );
+}
+
+export default App;
             <div style={{ marginTop: 8, color: '#555' }}>After creating the subscription you'll be shown account number and reference to complete payment via mobile money.</div>
           </div>
         )}
