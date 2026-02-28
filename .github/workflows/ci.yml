@@ -3,21 +3,15 @@ name: Build & Deploy
 on:
   push:
     branches:
-      - master   # change to master since your repo uses master
-
-  workflow_run:
-    workflows: ["Docker"]
-    types:
-      - completed
+      - master
 
 jobs:
   build:
-    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     defaults:
       run:
-        working-directory: backend   # 👈 IMPORTANT FIX
+        working-directory: backend
 
     steps:
       - name: Checkout code
