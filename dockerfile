@@ -19,9 +19,10 @@ SHELL ["/bin/sh", "-c"]
 # Working directory
 WORKDIR /usr/share/nginx/html
 
-# Install a tiny tool to allow healthchecks in this demo image
+# Install a tiny tool to allow healthchecks and prepare log/cache directories
 RUN apk add --no-cache curl \
- && mkdir -p /var/log/nginx
+ && mkdir -p /var/log/nginx /var/cache/nginx/client_temp \
+ && chown -R 101:101 /var/log/nginx /var/cache/nginx
 
 # Copy local nginx configuration
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
