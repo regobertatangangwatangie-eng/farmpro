@@ -78,11 +78,16 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: ./frontend
-        run: npm install
+        run: |
+          npm ci
+          echo "installed frontend dependencies successfully"
 
       - name: Build frontend
         working-directory: ./frontend
-        run: npm run build
+        run: |
+          npm run build
+          echo "frontend build finished"
+
 
       - name: Prepare static assets
         run: |
