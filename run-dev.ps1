@@ -1,4 +1,3 @@
-param()
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Definition
 Write-Host "Starting FarmPro dev environment from $root"
