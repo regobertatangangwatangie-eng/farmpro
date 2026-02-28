@@ -103,6 +103,17 @@ jobs:
           npm install
           echo "installed frontend dependencies successfully"
 
+      - name: Run frontend lint
+        working-directory: ./frontend
+        run: |
+          npm run lint || true  # lint warnings shouldn't fail build for now
+
+      - name: Run frontend tests
+        working-directory: ./frontend
+        run: |
+          npm run test -- --watchAll=false --silent
+          echo "frontend tests completed" 
+
       - name: Build frontend
         working-directory: ./frontend
         run: |

@@ -148,6 +148,48 @@ This message is served by the `/api/promotions/ticket` endpoint and can be updat
 - **CI/CD**: GitHub Actions
 - **IaC**: Terraform, Ansible
 
+## Testing & Automation
+
+Automated tests cover both backend and frontend. Run them locally with the following commands:
+
+```bash
+# backend
+cd backend
+npm ci
+npm test
+
+# frontend
+cd frontend
+npm ci
+npm run lint           # optional ESLint check
+npm run test -- --watchAll=false
+```
+
+The CI pipeline executes linting, testing, build and deploy steps defined in `.github/workflows/ci.yml`. Frontend tests and linting were recently added so platform regressions are detected early.
+
+## Deployment
+
+This project supports several deployment strategies:
+
+1. **Docker Compose (local)**:
+   ```bash
+   docker-compose up -d
+   ```
+2. **Docker images** published by CI, pulled with:
+   ```bash
+   docker pull ${DOCKERHUB_USERNAME}/farmpro-backend:latest
+   docker pull ${DOCKERHUB_USERNAME}/farmpro:latest
+   ```
+3. **Kubernetes / Helm** – templates in `helm/farmpro` and `k8s/`. Use:
+   ```bash
+   helm install farmpro helm/farmpro --namespace default
+   ```
+4. **Terraform** – provision infrastructure via `terraform/` (`terraform init`/`apply`).
+5. **Ansible** – run `ansible-playbook -i inventory ansible/deploy.yml` for configuration management.
+
+CI/CD automatically builds, tests, and pushes images when code is merged to `main`/`master`.
+
+
 ## Production Deployment
 
 ### Docker Build (Local):

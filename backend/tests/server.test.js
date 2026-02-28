@@ -26,4 +26,30 @@ describe('Basic API checks', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toHaveProperty('service');
   });
+
+  test('GET /api/categories returns an array', async () => {
+    const response = await request(app).get('/api/categories');
+    expect(response.statusCode).toBe(200);
+    expect(Array.isArray(response.body.categories)).toBe(true);
+  });
+
+  test('POST /api/users/register creates new user', async () => {
+    const email = `testuser${Date.now()}@example.com`;
+    const response = await request(app)
+      .post('/api/users/register')
+      .send({
+        name: 'Test User',
+        email,
+        role: 'buyer',
+      });
+    expect(response.statusCode).toBe(200);
+    expect(response.body.user).toBeDefined();
+    expect(response.body.user.email).toBe(email);
+  });
+
+  test('GET /api/promotions/ticket returns promotion object', async () => {
+    const response = await request(app).get('/api/promotions/ticket');
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toHaveProperty('show');
+  });
 });
