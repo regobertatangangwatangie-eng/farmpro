@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   frontend:
-    repository: your-dockerhub-username/farmpro
+    repository: regobert2004/farmpro
     tag: latest
     pullPolicy: IfNotPresent
   backend:

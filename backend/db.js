@@ -2,6 +2,14 @@ const path = require('path');
 const Database = require('better-sqlite3');
 
 const dbPath = process.env.SQLITE_FILE || path.join(__dirname, 'data', 'farmpro.db');
+
+// ensure directory exists (avoids errors during CI runs or first startup)
+const dbDir = path.dirname(dbPath);
+const fs = require('fs');
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
 const db = new Database(dbPath);
 
 // Create tables if not exists
