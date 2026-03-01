@@ -35,16 +35,20 @@ function App() {
     // Try to load user from localStorage
     const saved = localStorage.getItem('farmpro_user');
     if (saved) setCurrentUser(JSON.parse(saved));
+    // We intentionally omit fetchCategories etc. from deps since they never change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     fetchListings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory, searchTerm]);
 
   useEffect(() => {
     if (currentUser) {
       fetchOrders();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
   // ========== API Calls ==========
