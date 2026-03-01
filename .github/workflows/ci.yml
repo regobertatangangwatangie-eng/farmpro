@@ -30,22 +30,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Show Node & npm versions (debug)
+      - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-      - name: Print node/npm
-        run: |
-          node -v || true
-          npm -v || true
-
-      - name: Cache backend node modules
-        uses: actions/cache@v4
-        with:
-          path: backend/.npm
-          key: backend-node-modules-${{ runner.os }}-v1
-          restore-keys: |
-            backend-node-modules-${{ runner.os }}-v1
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
 
       - name: Log in to Docker Hub
         if: github.event_name != 'pull_request'
@@ -53,11 +45,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Install Node.js (for tests)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
 
       - name: Run backend lint
         working-directory: ./backend
